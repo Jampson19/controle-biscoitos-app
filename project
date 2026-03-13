@@ -1,0 +1,285 @@
+# Controle Biscoitos - App Android (Protótipo Profissional)
+# Stack: Python + KivyMD + SQLite
+
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivymd.app import MDApp
+import sqlite3
+from datetime import datetime
+
+# ---------------- DATABASE SERVICE ----------------
+
+class Database:
+
+    def __init__(self):
+        self.conn = sqlite3.connect("biscoito.db")
+        self.cursor = self.conn.cursor()
+        self.create_tables()
+
+    def create_tables(self):
+
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vendas(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            produto TEXT,
+            quantidade INTEGER,
+            valor REAL
+        )
+        """)
+
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS gastos(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            descricao TEXT,
+            valor REAL
+        )
+        """)
+
+        self.conn.commit()
+
+    # ---------- VENDAS ----------
+
+    def add_venda(self, produto, quantidade, valor):
+
+        data = datetime.now().strftime("%d/%m/%Y")
+
+        self.cursor.execute(
+            "INSERT INTO vendas (data, produto, quantidade, valor) VALUES (?, ?, ?, ?)",
+            (data, produto, quantidade, valor),
+        )
+
+        self.conn.commit()
+
+    # ---------- GASTOS ----------
+
+    def add_gasto(self, descricao, valor):
+
+        data = datetime.now().strftime("%d/%m/%Y")
+
+        self.cursor.execute(
+            "INSERT INTO gastos (data, descricao, valor) VALUES (?, ?, ?)",
+            (data, descricao, valor),
+        )
+
+        self.conn.commit()
+
+    # ---------- RELATORIO ----------
+
+    def get_totais(self):
+
+        self.cursor.execute("SELECT SUM(valor) FROM vendas")
+        vendas = self.cursor.fetchone()[0] or 0
+
+        self.cursor.execute("SELECT SUM(valor) FROM gastos")
+        gastos = self.cursor.fetchone()[0] or 0
+
+        lucro = vendas - gastos
+
+        return vendas, gastos, lucro
+
+
+# ---------------- SCREENS ----------------
+
+class MenuScreen(Screen):
+    pass
+
+
+class VendaScreen(Screen):
+
+    def salvar(self):
+
+        produto = self.ids.produto.text
+        quantidade = self.ids.quantidade.text
+        valor = self.ids.valor.text
+
+        if produto and quantidade and valor:
+
+            app.db.add_venda(produto, int(quantidade), float(valor))
+
+            self.ids.produto.text = ""
+            self.ids.quantidade.text = ""
+            self.ids.valor.text = ""
+
+
+class GastoScreen(Screen):
+
+    def salvar(self):
+
+        descricao = self.ids.descricao.text
+        valor = self.ids.valor.text
+
+        if descricao and valor:
+
+            app.db.add_gasto(descricao, float(valor))
+
+            self.ids.descricao.text = ""
+            self.ids.valor.text = ""
+
+
+class RelatorioScreen(Screen):
+
+    def on_pre_enter(self):
+
+        vendas, gastos, lucro = app.db.get_totais()
+
+        self.ids.vendas.text = f"Vendas: R$ {vendas:.2f}"
+        self.ids.gastos.text = f"Gastos: R$ {gastos:.2f}"
+        self.ids.lucro.text = f"Lucro: R$ {lucro:.2f}"
+
+
+# ---------------- UI ----------------
+
+KV = '''
+
+ScreenManager:
+    MenuScreen:
+    VendaScreen:
+    GastoScreen:
+    RelatorioScreen:
+
+<MenuScreen>:
+
+    name: "menu"
+
+    MDBoxLayout:
+        orientation: "vertical"
+        spacing: "20dp"
+        padding: "40dp"
+
+        MDLabel:
+            text: "Controle Biscoitos"
+            halign: "center"
+            font_style: "H4"
+
+        MDRaisedButton:
+            text: "Registrar Venda"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "venda"
+
+        MDRaisedButton:
+            text: "Registrar Gasto"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "gasto"
+
+        MDRaisedButton:
+            text: "Relatórios"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "relatorio"
+
+
+<VendaScreen>:
+
+    name: "venda"
+
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: "20dp"
+        spacing: "20dp"
+
+        MDTextField:
+            id: produto
+            hint_text: "Produto"
+
+        MDTextField:
+            id: quantidade
+            hint_text: "Quantidade"
+            input_filter: "int"
+
+        MDTextField:
+            id: valor
+            hint_text: "Valor Total"
+            input_filter: "float"
+
+        MDRaisedButton:
+            text: "Salvar Venda"
+            pos_hint: {"center_x": .5}
+            on_release: root.salvar()
+
+        MDTextButton:
+            text: "Voltar"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "menu"
+
+
+<GastoScreen>:
+
+    name: "gasto"
+
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: "20dp"
+        spacing: "20dp"
+
+        MDTextField:
+            id: descricao
+            hint_text: "Descrição do gasto"
+
+        MDTextField:
+            id: valor
+            hint_text: "Valor"
+            input_filter: "float"
+
+        MDRaisedButton:
+            text: "Salvar Gasto"
+            pos_hint: {"center_x": .5}
+            on_release: root.salvar()
+
+        MDTextButton:
+            text: "Voltar"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "menu"
+
+
+<RelatorioScreen>:
+
+    name: "relatorio"
+
+    MDBoxLayout:
+        orientation: "vertical"
+        padding: "30dp"
+        spacing: "30dp"
+
+        MDLabel:
+            id: vendas
+            text: "Vendas"
+            halign: "center"
+
+        MDLabel:
+            id: gastos
+            text: "Gastos"
+            halign: "center"
+
+        MDLabel:
+            id: lucro
+            text: "Lucro"
+            halign: "center"
+
+        MDRaisedButton:
+            text: "Voltar"
+            pos_hint: {"center_x": .5}
+            on_release: app.root.current = "menu"
+
+'''
+
+
+# ---------------- APP ----------------
+
+class BiscoitoApp(MDApp):
+
+    def build(self):
+
+        global app
+        app = self
+
+        self.db = Database()
+
+        self.theme_cls.primary_palette = "Brown"
+        self.theme_cls.theme_style = "Light"
+
+        return Builder.load_string(KV)
+
+
+if __name__ == "__main__":
+    BiscoitoApp().run()
